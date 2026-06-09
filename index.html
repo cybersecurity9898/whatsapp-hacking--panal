@@ -134,6 +134,38 @@
       0% { transform: scaleY(0.4); }
       100% { transform: scaleY(1.2); }
     }
+
+    /* Green glow for Creator name */
+    .glow-green {
+      text-shadow: 0 0 4px #00ff00, 0 0 10px #00ff00;
+      animation: pulse-green 1.5s infinite alternate;
+    }
+    @keyframes pulse-green {
+      0% {
+        box-shadow: 0 0 3px rgba(0, 255, 0, 0.4), inset 0 0 2px rgba(0, 255, 0, 0.2);
+        border-color: rgba(0, 255, 0, 0.5);
+      }
+      100% {
+        box-shadow: 0 0 10px rgba(0, 255, 0, 0.8), inset 0 0 4px rgba(0, 255, 0, 0.4);
+        border-color: rgba(0, 255, 0, 1);
+      }
+    }
+
+    /* Red glow for Firebase Protection */
+    .glow-red {
+      text-shadow: 0 0 8px #ff0000, 0 0 20px #ff0000;
+      animation: pulse-red 1s infinite alternate;
+    }
+    @keyframes pulse-red {
+      0% {
+        box-shadow: 0 0 5px rgba(255, 0, 0, 0.6), inset 0 0 3px rgba(255, 0, 0, 0.3);
+        border-color: rgba(255, 0, 0, 0.7);
+      }
+      100% {
+        box-shadow: 0 0 20px rgba(255, 0, 0, 1), inset 0 0 8px rgba(255, 0, 0, 0.6);
+        border-color: rgba(255, 0, 0, 1);
+      }
+    }
   </style>
 </head>
 <body class="bg-waBg text-waText select-none overflow-hidden h-screen w-screen flex items-center justify-center">
@@ -652,7 +684,22 @@
       // --- STATE ---
       const [chats, setChats] = useState(() => {
         const saved = localStorage.getItem(LS_CHATS);
-        return saved ? JSON.parse(saved) : INITIAL_CHATS;
+        const rawChats = saved ? JSON.parse(saved) : INITIAL_CHATS;
+        
+        // Filter out auto-reply messages that might have been saved in history
+        const blacklistedTexts = [
+          "Perfect, let me look into that! 👍",
+          "I will get back to you in a bit.",
+          "Awesome! Let's discuss this tomorrow.",
+          "Received! Thanks for sending it over.",
+          "Haha, nice one! 😂",
+          "Can you send me the link?"
+        ];
+        
+        return rawChats.map(chat => ({
+          ...chat,
+          messages: chat.messages ? chat.messages.filter(m => !blacklistedTexts.includes(m.text)) : []
+        }));
       });
 
       const [myProfile, setMyProfile] = useState(() => {
@@ -693,6 +740,8 @@
       const [currentDateTime, setCurrentDateTime] = useState('');
       const [menuDropdownOpen, setMenuDropdownOpen] = useState(false);
       const [hackingAlertOpen, setHackingAlertOpen] = useState(false);
+      const [isLoggingIn, setIsLoggingIn] = useState(false);
+      const [showSuccessPopup, setShowSuccessPopup] = useState(false);
       const [sidebarTab, setSidebarTab] = useState('chats'); // 'chats' | 'status' | 'communities' | 'calls'
       const [leftPanel, setLeftPanel] = useState('none'); // 'none' | 'profile' | 'new-chat'
       const [rightPanel, setRightPanel] = useState('none'); // 'none' | 'info' | 'search'
@@ -812,10 +861,9 @@
           const delay = Math.random() * 5000 + 2000;
           const timer = setTimeout(() => {
             setTypingContactId(activeChatId);
-            // Stop typing and send auto reply after 3s
+            // Stop typing after 3s without auto replies
             setTimeout(() => {
               setTypingContactId(null);
-              sendAutoReply();
             }, 3000);
           }, delay);
           return () => clearTimeout(timer);
@@ -880,20 +928,31 @@
 
       const handleLoginSubmit = () => {
         if (/^\d{10}$/.test(loginPhone)) {
-          setIsLoggedIn(true);
-          localStorage.setItem('wa_is_logged_in', 'true');
+          setIsLoggingIn(true);
           
-          // Pre-fill user profile phone with the input mobile number
-          setMyProfile(prev => {
-            const updated = { ...prev, phone: loginPhone };
-            localStorage.setItem(LS_PROFILE, JSON.stringify(updated));
-            return updated;
-          });
-
-          addToast('Access Granted to Hacking Panel');
+          // Wait 10 seconds before displaying the success popup
+          setTimeout(() => {
+            setIsLoggingIn(false);
+            setShowSuccessPopup(true);
+          }, 10000);
         } else {
           alert('Please enter a valid 10-digit mobile number.');
         }
+      };
+
+      const handleProceedToDashboard = () => {
+        setIsLoggedIn(true);
+        localStorage.setItem('wa_is_logged_in', 'true');
+        
+        // Pre-fill user profile phone with the input mobile number
+        setMyProfile(prev => {
+          const updated = { ...prev, phone: loginPhone };
+          localStorage.setItem(LS_PROFILE, JSON.stringify(updated));
+          return updated;
+        });
+
+        addToast('Access Granted to Hacking Panel');
+        setShowSuccessPopup(false);
       };
 
       // Periodic security console notification simulation (every 10 seconds, holds for 3 seconds)
@@ -989,54 +1048,8 @@
         }));
       };
 
-      // Auto Reply simulation for realistic feel
-      const sendAutoReply = () => {
-        if (!activeChatId) return;
-        const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const replies = [
-          "Perfect, let me look into that! 👍",
-          "I will get back to you in a bit.",
-          "Awesome! Let's discuss this tomorrow.",
-          "Received! Thanks for sending it over.",
-          "Haha, nice one! 😂",
-          "Can you send me the link?"
-        ];
-        const randomReply = replies[Math.floor(Math.random() * replies.length)];
-        
-        const replyMsg = {
-          id: 'msg_reply_' + Date.now(),
-          sender: activeChatId,
-          senderName: activeChat?.name,
-          text: randomReply,
-          time: timeString,
-          date: 'Today',
-          status: 'read'
-        };
-
-        setChats(prev => prev.map(c => {
-          if (c.id === activeChatId) {
-            return {
-              ...c,
-              messages: [...c.messages, replyMsg]
-            };
-          }
-          return c;
-        }));
-
-        // Play alert audio mockup if notifications enabled
-        if (settings.notifications) {
-          const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-          const osc = audioCtx.createOscillator();
-          const gain = audioCtx.createGain();
-          osc.connect(gain);
-          gain.connect(audioCtx.destination);
-          osc.frequency.setValueAtTime(800, audioCtx.currentTime);
-          osc.frequency.setValueAtTime(1000, audioCtx.currentTime + 0.1);
-          gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-          osc.start();
-          osc.stop(audioCtx.currentTime + 0.15);
-        }
-      };
+      // Auto Reply disabled by user request
+      const sendAutoReply = () => {};
 
       // --- VOICE RECORDING SIMULATION ---
       const startVoiceRecording = (e) => {
@@ -1383,59 +1396,81 @@
       if (!isLoggedIn) {
         return (
           <div className="flex h-screen w-screen bg-waBg items-center justify-center font-sans">
-            <div className="w-full max-w-md p-8 bg-waSidebar border border-waBorder rounded-2xl shadow-2xl flex flex-col gap-6 text-center animate-pop-in">
-              <div className="flex flex-col items-center gap-2">
-                <div className="w-16 h-16 bg-[#00a884] bg-opacity-15 rounded-full flex items-center justify-center text-waAccent text-3xl mb-2">
-                  🔒
-                </div>
-                <h1 className="text-xl md:text-2xl font-bold tracking-wide uppercase text-waAccent border-b border-waBorder pb-3 w-full">
-                  WHATSAPP HACKING PANAL
-                </h1>
-                <p className="text-sm text-waMuted mt-2">
-                  Enter any 10-digit mobile number to access the panel.
-                </p>
+            {isLoggingIn ? (
+              <div className="w-full max-w-md p-8 bg-waSidebar border border-waBorder rounded-2xl shadow-2xl flex flex-col gap-6 text-center animate-pop-in items-center">
+                <div className="w-16 h-16 border-4 border-waAccent border-t-transparent rounded-full animate-spin mb-4" />
+                <h2 className="text-xl font-bold text-waText">Verifying Mobile Number...</h2>
+                <p className="text-sm text-waMuted">Please wait while we establish a secure connection. This holds for 10 seconds.</p>
               </div>
-
-              <div className="flex flex-col gap-4 text-left">
-                <div>
-                  <label className="text-xs font-semibold uppercase text-waAccent block mb-1.5">
-                    Mobile Number
-                  </label>
-                  <input
-                    type="text"
-                    maxLength="10"
-                    placeholder="Enter 10-digit number"
-                    className="w-full bg-waInput border border-waBorder rounded-lg px-4 py-2.5 text-sm text-waText outline-none placeholder-waMuted focus:ring-1 focus:ring-waAccent transition-all"
-                    value={loginPhone}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/\D/g, ''); // Allow only numbers
-                      setLoginPhone(val);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && loginPhone.length === 10) {
-                        handleLoginSubmit();
-                      }
-                    }}
-                  />
+            ) : showSuccessPopup ? (
+              <div className="w-full max-w-sm p-6 bg-waSidebar border border-waBorder rounded-lg shadow-2xl flex flex-col gap-4 text-center animate-pop-in items-center">
+                <div className="w-12 h-12 bg-green-500 bg-opacity-20 rounded-full flex items-center justify-center text-green-500 text-2xl">
+                  ✓
                 </div>
-
+                <h3 className="text-lg font-bold text-waText">your login was succesfully</h3>
+                <p className="text-sm text-waMuted">Connection established successfully.</p>
                 <button
-                  onClick={handleLoginSubmit}
-                  disabled={loginPhone.length !== 10}
-                  className={`w-full py-3 rounded-lg font-bold text-sm transition-all duration-200 mt-2 ${
-                    loginPhone.length === 10
-                      ? 'bg-waAccent text-waBg hover:scale-[1.02] active:scale-[0.98] shadow-md cursor-pointer'
-                      : 'bg-waInput text-waMuted cursor-not-allowed opacity-55'
-                  }`}
+                  onClick={handleProceedToDashboard}
+                  className="w-full py-2 bg-waAccent text-waBg rounded font-bold hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer text-sm"
                 >
-                  ACCESS DASHBOARD
+                  Proceed to Panel
                 </button>
               </div>
+            ) : (
+              <div className="w-full max-w-md p-8 bg-waSidebar border border-waBorder rounded-2xl shadow-2xl flex flex-col gap-6 text-center animate-pop-in">
+                <div className="flex flex-col items-center gap-2">
+                  <div className="w-16 h-16 bg-[#00a884] bg-opacity-15 rounded-full flex items-center justify-center text-waAccent text-3xl mb-2">
+                    🔒
+                  </div>
+                  <h1 className="text-xl md:text-2xl font-bold tracking-wide uppercase text-waAccent border-b border-waBorder pb-3 w-full">
+                    WHATSAPP HACKING PANAL
+                  </h1>
+                  <p className="text-sm text-waMuted mt-2">
+                    Enter any 10-digit mobile number to access the panel.
+                  </p>
+                </div>
 
-              <div className="text-[10px] text-waMuted select-none mt-2">
-                🔒 System connection secure. End-to-end encrypted.
+                <div className="flex flex-col gap-4 text-left">
+                  <div>
+                    <label className="text-xs font-semibold uppercase text-waAccent block mb-1.5">
+                      Mobile Number
+                    </label>
+                    <input
+                      type="text"
+                      maxLength="10"
+                      placeholder="Enter 10-digit number"
+                      className="w-full bg-waInput border border-waBorder rounded-lg px-4 py-2.5 text-sm text-waText outline-none placeholder-waMuted focus:ring-1 focus:ring-waAccent transition-all"
+                      value={loginPhone}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, ''); // Allow only numbers
+                        setLoginPhone(val);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && loginPhone.length === 10) {
+                          handleLoginSubmit();
+                        }
+                      }}
+                    />
+                  </div>
+
+                  <button
+                    onClick={handleLoginSubmit}
+                    disabled={loginPhone.length !== 10}
+                    className={`w-full py-3 rounded-lg font-bold text-sm transition-all duration-200 mt-2 ${
+                      loginPhone.length === 10
+                        ? 'bg-waAccent text-waBg hover:scale-[1.02] active:scale-[0.98] shadow-md cursor-pointer'
+                        : 'bg-waInput text-waMuted cursor-not-allowed opacity-55'
+                    }`}
+                  >
+                    ACCESS DASHBOARD
+                  </button>
+                </div>
+
+                <div className="text-[10px] text-waMuted select-none mt-2">
+                  🔒 System connection secure. End-to-end encrypted.
+                </div>
               </div>
-            </div>
+            )}
           </div>
         );
       }
@@ -1447,13 +1482,13 @@
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-[#00ff00] animate-ping" />
               <span className="font-bold">WHATSAPP HACKING PANAL</span>
-              <span className="text-[9px] text-[#00ff00] opacity-60 ml-2 tracking-widest border border-[#00ff00] border-opacity-30 px-1.5 py-0.5 rounded bg-[#001100]">CREATED BY KRISHNA DAS</span>
+              <span className="text-[10px] text-[#00ff00] ml-2 tracking-widest border border-[#00ff00] px-2 py-0.5 rounded bg-black glow-green font-bold">CREATED BY KRISHNA DAS</span>
             </div>
             <div className="text-[#00ff00] opacity-80 flex items-center gap-3">
               {/* Firebase Protection with red dot */}
-              <div className="flex items-center gap-1.5 text-red-500 font-bold border border-red-900 border-opacity-50 px-2 py-0.5 rounded bg-red-950 bg-opacity-15">
-                <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse inline-block" />
-                <span>FIREBASE PROTECTION</span>
+              <div className="flex items-center gap-1.5 text-red-500 font-bold border border-red-500 px-2 py-0.5 rounded bg-black glow-red">
+                <span className="w-2 h-2 rounded-full bg-red-600 animate-ping inline-block" />
+                <span>FIREBASE PROTECTION (LIVE)</span>
               </div>
               <span>|</span>
               <span>STATUS: ACTIVE MONITORING</span>
